@@ -1,0 +1,847 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Coin Flip 3D</title>
+
+  <style>
+    :root{
+      /* Rainbow Pastel Palette */
+      --p-yellow: #FAEDCB;
+      --p-green:  #C9E4DE;
+      --p-blue:   #C6DEF1;
+      --p-purple: #DBCDF0;
+      --p-pink:   #F2C6DE;
+      --p-orange: #F7D9C4;
+
+      --bg-gradient: linear-gradient(135deg, #C6DEF1 0%, #DBCDF0 50%, #F2C6DE 100%);
+      
+      --text: #475569;      /* Slate 600 - dark enough for contrast */
+      --text-muted: #64748b; /* Slate 500 */
+      --border-light: rgba(255, 255, 255, 0.6);
+
+      /* Coin Colors (keep metallic but softer context) */
+      --gold1:#f7d26a;
+      --gold2:#d49c2a;
+      --silver1:#e0e7ff;
+      --silver2:#94a3b8;
+
+      --edge1:#b45309;
+      --edge2:#fcd34d;
+
+      --shadow: 0 20px 40px rgba(100, 116, 139, 0.15);
+
+      /* JS will override */
+      --coin-d:160px;
+      --halfT:20px;
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+      background: var(--bg-gradient);
+      padding: 18px;
+    }
+
+    .app{
+      width:min(560px, 96vw);
+      padding:22px 18px 18px;
+      border-radius:24px;
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid var(--border-light);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    h1{ margin:0 0 6px; font-size:18px; letter-spacing:.3px; color: #334155; }
+    .sub{ margin:0 0 16px; color:var(--text-muted); font-size:13px; line-height:1.35; }
+
+    .stage{
+      display:grid;
+      place-items:center;
+      padding:20px 12px 16px;
+      border-radius:20px;
+      background: rgba(255, 255, 255, 0.4);
+      border: 1px solid var(--border-light);
+    }
+
+    .scene{
+      width:240px;
+      height:240px;
+      perspective: 1200px;
+      display:grid;
+      place-items:center;
+    }
+
+    /* =========================
+       COIN (BODY)
+    ========================== */
+    .coin{
+      position:relative;
+      width: var(--coin-d);
+      height: var(--coin-d);
+      transform-style: preserve-3d;
+      -webkit-transform-style: preserve-3d;
+      transition: transform 1.55s cubic-bezier(.12,.9,.18,1);
+      /* filter: drop-shadow(0 22px 18px rgba(0,0,0,.45)); Removed to fix 3D backface visibility */
+      user-select:none;
+    }
+
+    /* Make stacking deterministic */
+    .edge-seg{ z-index: 0; }
+    .face{ z-index: 1; }
+    .sticker{ z-index: 3; }
+
+    /* Initial "?" only before first flip */
+    .coin.is-initial .sticker .label{ opacity:0; }
+    .coin.is-initial .face::after{
+      content:"?";
+      position:absolute;
+      inset:0;
+      display:grid;
+      place-items:center;
+      transform: translateZ(10px);
+      font-size:60px;
+      font-weight:900;
+      color: rgba(255,255,255,.28);
+      text-shadow: 2px 2px 8px rgba(0,0,0,.25);
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+      pointer-events:none;
+    }
+
+    .face{
+      position:absolute;
+      inset:0;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      transform-style: preserve-3d;
+      -webkit-transform-style: preserve-3d;
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+      border: 2px solid rgba(255,255,255,.16);
+      overflow:hidden;
+    }
+
+    .face.heads{
+      background:
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,.55) 0%, rgba(255,255,255,.0) 36%),
+        conic-gradient(from 35deg, var(--gold1), var(--gold2), var(--gold1), var(--gold2), var(--gold1));
+      box-shadow: inset 0 0 0 7px rgba(138, 90, 18, 0.30);
+    }
+    .face.tails{
+      background:
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,.6) 0%, rgba(255,255,255,.0) 36%),
+        conic-gradient(from 35deg, var(--silver1), var(--silver2), var(--silver1), var(--silver2), var(--silver1));
+      box-shadow: inset 0 0 0 7px rgba(138, 90, 18, 0.22);
+    }
+
+    /* Bevel + recess (tuned to NOT cover sticker) */
+    .face::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      border-radius:50%;
+      background:
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,.55) 0%, transparent 35%),
+        radial-gradient(circle at 50% 50%,
+          rgba(0,0,0,.10) 0%,
+          transparent 35%,
+          rgba(0,0,0,.18) 62%,
+          rgba(255,255,255,.16) 72%,
+          rgba(0,0,0,.22) 100%);
+      pointer-events:none;
+      transform: translateZ(0.5px);
+      opacity: 0.92;
+    }
+
+    .face::after{
+      content:"";
+      position:absolute;
+      inset:14px;
+      border-radius:50%;
+      background:
+        radial-gradient(circle at 35% 30%, rgba(255,255,255,.20), transparent 45%),
+        radial-gradient(circle at 60% 70%, rgba(0,0,0,.20), transparent 55%);
+      box-shadow:
+        inset 0 10px 18px rgba(255,255,255,.10),
+        inset 0 -14px 18px rgba(0,0,0,.18);
+      pointer-events:none;
+      transform: translateZ(1px);
+      opacity: 0.92;
+    }
+
+    /* SIDE WALL (the thickness of the whole coin) */
+    .edge-seg{
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform-style: preserve-3d;
+      -webkit-transform-style: preserve-3d;
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+
+      background:
+        linear-gradient(to bottom,
+          rgba(0,0,0,.35) 0%,
+          rgba(255,255,255,.10) 10%,
+          var(--edge1) 22%,
+          var(--edge2) 50%,
+          var(--edge1) 78%,
+          rgba(255,255,255,.08) 90%,
+          rgba(0,0,0,.35) 100%);
+      border-left: 1px solid rgba(255,255,255,.07);
+      border-right: 1px solid rgba(0,0,0,.10);
+    }
+
+    /* =========================
+       STICKERS (TEXT) – NEVER mirrored
+    ========================== */
+    .sticker{
+      position:absolute;
+      inset:0;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      transform-style: preserve-3d;
+      -webkit-transform-style: preserve-3d;
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+      pointer-events:none;
+    }
+
+    .label{
+      width:124px;
+      height:124px;
+      border-radius:50%;
+      display:grid;
+      place-items:center;
+      background: rgba(0,0,0,.08);
+      border: 1px solid rgba(255,255,255,.30);
+      box-shadow:
+        inset 0 4px 12px rgba(255,255,255,.25),
+        inset 0 -4px 12px rgba(0,0,0,.15);
+      text-align:center;
+      padding:10px;
+      /* IMPORTANT: remove blur that can "fog" text */
+      /* backdrop-filter: blur(4px); */
+      transform-style: preserve-3d;
+      -webkit-transform-style: preserve-3d;
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+    }
+
+    .big{
+      font-size:32px;
+      font-weight:900;
+      letter-spacing:1px;
+      text-shadow:
+        1px 1px 0 #8a5a12,
+        2px 2px 0 #8a5a12,
+        3px 3px 0 #8a5a12,
+        4px 4px 10px rgba(0,0,0,0.35);
+      margin-bottom:4px;
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+    }
+
+    .small{
+      font-size:13px;
+      color: #0b1220;
+      font-weight:800;
+      letter-spacing:.5px;
+      background: linear-gradient(180deg, #fff, #e2e8f0);
+      padding:4px 10px;
+      border-radius:999px;
+      display:inline-block;
+      box-shadow:
+        0 4px 6px rgba(0,0,0,0.28),
+        0 1px 0 rgba(255,255,255,0.8) inset;
+      backface-visibility:hidden;
+      -webkit-backface-visibility:hidden;
+    }
+
+    /* sticker positions */
+    .sticker-heads{ transform: translateZ(var(--halfT)); }
+    .sticker-tails{ transform: rotateY(180deg) translateZ(var(--halfT)); }
+
+    /* Pop-out depth */
+    .sticker .label{ transform: translateZ(12px); }
+    .sticker .big{ transform: translateZ(15px); }
+    .sticker .small{ transform: translateZ(25px); }
+
+    /* IMPORTANT: FIX mirrored tails using 2D flip (stable) */
+    .sticker-tails .label{ transform: translateZ(12px) scaleX(-1); }
+    .sticker-tails .big{ transform: translateZ(15px) scaleX(-1); }
+    .sticker-tails .small{ transform: translateZ(25px) scaleX(-1); }
+
+    /* =========================
+       UI
+    ========================== */
+    .status{
+      margin-top:14px;
+      text-align:center;
+      min-height:44px;
+    }
+    .status .result{ font-size:20px; font-weight:800; margin:0; color: #1e293b; }
+    .status .hint{ margin:4px 0 0; color:var(--text-muted); font-size:13px; }
+
+    .controls{
+      display:flex;
+      gap:10px;
+      margin-top:14px;
+      flex-wrap:wrap;
+      justify-content:center;
+      align-items:center;
+    }
+
+    .settings{
+      width:100%;
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap:10px;
+      margin-top:14px;
+    }
+    .field{
+      display:grid;
+      gap:6px;
+      text-align:left;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid var(--border-light);
+      border-radius:16px;
+      padding:10px 12px;
+    }
+    .field label{ font-size:12px; color: var(--text-muted); letter-spacing:.2px; font-weight:600; }
+    input[type="text"], input[type="number"]{
+      width:100%;
+      background: rgba(255, 255, 255, 0.7);
+      border: 1px solid var(--border-light);
+      color: var(--text);
+      border-radius:12px;
+      padding:9px 10px;
+      outline:none;
+      font-weight:700;
+    }
+    input[type="text"]:focus, input[type="number"]:focus{ border-color: var(--p-purple); background: #fff; }
+
+    button{
+      appearance:none;
+      border:none;
+      cursor:pointer;
+      color: #334155;
+      font-weight:800;
+      letter-spacing:.2px;
+      padding:11px 14px;
+      border-radius:16px;
+      background: #fff;
+      border: 1px solid var(--border-light);
+      box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+      transition: transform .08s ease, filter .2s ease;
+    }
+    #flipBtn{ background: var(--p-pink); color: #831843; border-color: rgba(255,255,255,0.4); }
+    #resetBtn{ background: var(--p-blue); color: #1e3a8a; border-color: rgba(255,255,255,0.4); }
+
+    button:active{ transform: translateY(1px) scale(.99); }
+    button:disabled{ opacity:.55; cursor:not-allowed; filter:grayscale(0.4); }
+
+    .pill{
+      font-size:12px;
+      color: #475569;
+      border:1px solid var(--border-light);
+      padding:6px 10px;
+      border-radius:999px;
+      background: var(--p-yellow);
+      font-weight:800;
+    }
+
+    .scoreboard{
+      width:100%;
+      margin-top:14px;
+      border-radius:20px;
+      background: rgba(255, 255, 255, 0.45);
+      border: 1px solid var(--border-light);
+      padding:12px;
+    }
+    .scoreHeader{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:10px;
+    }
+    .scoreTitle{ font-weight:900; letter-spacing:.2px; color: #334155; }
+    .scoreGrid{ display:grid; gap:8px; }
+    .scoreRow{
+      display:grid;
+      grid-template-columns: 72px 1fr 64px;
+      align-items:center;
+      gap:10px;
+      padding:10px 10px;
+      border-radius:16px;
+      background: rgba(255, 255, 255, 0.6);
+      border: 1px solid var(--border-light);
+    }
+    .scoreFace{ font-size:12px; color: var(--text-muted); font-weight:900; letter-spacing:.6px; }
+    .scoreName{ font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color: #1e293b; }
+    .scoreValue{ text-align:right; font-weight:900; color: #1e293b; }
+    .scoreFooter{
+      margin-top:10px;
+      color: var(--text-muted);
+      font-size:13px;
+      text-align:left;
+      min-height:18px;
+      font-weight:700;
+    }
+
+    @media (max-width: 520px){
+      body{
+        padding: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        display: flex;
+        align-items: flex-start;
+      }
+      .app{
+        width: 100%;
+        max-width: 100%;
+        min-height: 100vh;
+        min-height: 100dvh;
+        border-radius: 0;
+        border: none;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+      }
+      .stage{
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-evenly;
+        padding: 10px;
+        margin-bottom: 0;
+      }
+      /* Scale down scene to fit */
+      .scene{
+        width: 100%;
+        height: 180px;
+        transform: scale(0.9);
+      }
+      .settings{
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .field{ padding: 8px; }
+      .field label{ font-size: 11px; }
+      input[type="text"], input[type="number"]{
+        font-size: 14px;
+        padding: 8px;
+      }
+      button{
+        font-size: 14px;
+        padding: 10px 12px;
+      }
+      /* Compact scoreboard */
+      .scoreboard{
+        margin-top: 10px;
+        padding: 10px;
+      }
+      .scoreHeader{ margin-bottom: 6px; }
+      .scoreRow{
+        padding: 6px 8px;
+        font-size: 13px;
+        grid-template-columns: 60px 1fr 40px;
+      }
+      /* Compact controls */
+      .controls{ margin-top: 10px; gap: 6px; }
+      .pill{ padding: 4px 8px; font-size: 11px; }
+    }
+    
+    @media (max-width: 380px){
+      .scene{ transform: scale(0.85); height: 160px; }
+      .settings{ grid-template-columns: 1fr; }
+      .controls{ display:flex; flex-wrap:wrap; justify-content:center; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <h1>Coin Flip</h1>
+    <p class="sub">
+      Đen là do bạn, đừng đổ do thuật toán nhé, lol !.
+    </p>
+
+    <div class="stage">
+      <div class="scene" aria-label="Coin">
+        <div id="coin" class="coin is-initial" role="img" aria-label="Coin 3D">
+
+          <!-- BODY faces -->
+          <div id="faceHeads" class="face heads"></div>
+          <div id="faceTails" class="face tails"></div>
+
+          <!-- STICKERS (TEXT) -->
+          <div class="sticker sticker-heads">
+            <div class="label">
+              <div>
+                <div class="big">NGỬA 🍀</div>
+                <div id="headsNameBadge" class="small">Người 1</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sticker sticker-tails">
+            <div class="label">
+              <div>
+                <div class="big">ÚP 💩</div>
+                <div id="tailsNameBadge" class="small">Người 2</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Edge segments injected by JS -->
+        </div>
+      </div>
+
+      <div class="status">
+        <p id="result" class="result">Sẵn sàng.</p>
+        <p id="hint" class="hint">Chọn thiết lập rồi nhấn Tung xu.</p>
+      </div>
+
+      <div class="settings">
+        <div class="field">
+          <label for="roundCount">Số lần tung</label>
+          <input id="roundCount" type="number" min="1" max="99" value="3" inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label for="headsName">Ngửa là ai?</label>
+          <input id="headsName" type="text" maxlength="18" value="Người 1" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="tailsName">Úp là ai?</label>
+          <input id="tailsName" type="text" maxlength="18" value="Người 2" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="flipBtn">Tung xu</button>
+        <button id="resetBtn" type="button">Làm lại</button>
+        <span id="countPill" class="pill">Lượt: 0/3</span>
+        <span id="remainingPill" class="pill">Còn lại: 3</span>
+      </div>
+
+      <div class="scoreboard">
+        <div class="scoreHeader">
+          <div class="scoreTitle">Bảng tổng sắp</div>
+          <span class="pill">Random: crypto</span>
+        </div>
+
+        <div class="scoreGrid">
+          <div class="scoreRow">
+            <div class="scoreFace">NGỬA</div>
+            <div id="headsNameOut" class="scoreName">Người 1</div>
+            <div id="headsScore" class="scoreValue">0</div>
+          </div>
+          <div class="scoreRow">
+            <div class="scoreFace">ÚP</div>
+            <div id="tailsNameOut" class="scoreName">Người 2</div>
+            <div id="tailsScore" class="scoreValue">0</div>
+          </div>
+        </div>
+
+        <div id="summary" class="scoreFooter"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =========================
+       CONFIG
+    ========================== */
+    const COIN_DIAMETER = 160;       // px
+    const COIN_THICKNESS = 20;       // px (thick so you always see side wall)
+    const EDGE_SEGMENTS = 96;        // smoother cylinder
+    const FLIP_DURATION_MS = 1550;
+
+    // Rest tilt so thickness is always visible
+    const REST_TILT_X = 26;          // deg
+    const REST_TILT_Y = 32;          // deg
+
+    /* =========================
+       DOM
+    ========================== */
+    const coin = document.getElementById('coin');
+
+    const faceHeads = document.getElementById('faceHeads');
+    const faceTails = document.getElementById('faceTails');
+
+    const flipBtn = document.getElementById('flipBtn');
+    const resetBtn = document.getElementById('resetBtn');
+
+    const resultEl = document.getElementById('result');
+    const hintEl = document.getElementById('hint');
+
+    const countPill = document.getElementById('countPill');
+    const remainingPill = document.getElementById('remainingPill');
+
+    const roundCountEl = document.getElementById('roundCount');
+    const headsNameEl = document.getElementById('headsName');
+    const tailsNameEl = document.getElementById('tailsName');
+
+    const headsNameBadge = document.getElementById('headsNameBadge');
+    const tailsNameBadge = document.getElementById('tailsNameBadge');
+
+    const headsNameOut = document.getElementById('headsNameOut');
+    const tailsNameOut = document.getElementById('tailsNameOut');
+
+    const headsScoreEl = document.getElementById('headsScore');
+    const tailsScoreEl = document.getElementById('tailsScore');
+
+    const summaryEl = document.getElementById('summary');
+
+    /* =========================
+       STATE
+    ========================== */
+    const state = {
+      flips: 0,
+      maxFlips: 3,
+      headsScore: 0,
+      tailsScore: 0,
+      rotX: REST_TILT_X,
+      rotY: REST_TILT_Y,
+      busy: false,
+    };
+
+    /* =========================
+       Helpers
+    ========================== */
+    function clampInt(v, min, max){
+      const n = parseInt(v, 10);
+      if (Number.isNaN(n)) return min;
+      return Math.min(max, Math.max(min, n));
+    }
+
+    function normMod360(deg){
+      const m = deg % 360;
+      return (m + 360) % 360;
+    }
+
+    function getName(el, fallback){
+      const v = (el.value || "").trim().replace(/\s+/g, " ");
+      return v.length ? v : fallback;
+    }
+
+    function cryptoBool(){
+      const a = new Uint32Array(1);
+      crypto.getRandomValues(a);
+      return (a[0] & 1) === 0;
+    }
+
+    function cryptoInt(min, max){
+      const range = max - min + 1;
+      const a = new Uint32Array(1);
+      crypto.getRandomValues(a);
+      return min + (a[0] % range);
+    }
+
+    function setBusy(b){
+      state.busy = b;
+      flipBtn.disabled = b || state.flips >= state.maxFlips;
+      resetBtn.disabled = b;
+      roundCountEl.disabled = b;
+      headsNameEl.disabled = b;
+      tailsNameEl.disabled = b;
+    }
+
+    function updateNamesUI(){
+      const h = getName(headsNameEl, "Người 1");
+      const t = getName(tailsNameEl, "Người 2");
+      headsNameBadge.textContent = h;
+      tailsNameBadge.textContent = t;
+      headsNameOut.textContent = h;
+      tailsNameOut.textContent = t;
+    }
+
+    function updateCountersUI(){
+      countPill.textContent = `Lượt: ${state.flips}/${state.maxFlips}`;
+      remainingPill.textContent = `Còn lại: ${Math.max(0, state.maxFlips - state.flips)}`;
+      headsScoreEl.textContent = String(state.headsScore);
+      tailsScoreEl.textContent = String(state.tailsScore);
+    }
+
+    function setSummary(text){
+      summaryEl.textContent = text || "";
+    }
+
+    /* =========================
+       Build 3D coin (3 parts):
+       - heads cap
+       - tails cap
+       - side wall (thickness)
+    ========================== */
+    function buildCoin3D(){
+      const radius = COIN_DIAMETER / 2;
+      const halfT = COIN_THICKNESS / 2;
+
+      coin.style.setProperty('--coin-d', `${COIN_DIAMETER}px`);
+      coin.style.setProperty('--halfT', `${halfT}px`);
+
+      // Place caps
+      faceHeads.style.transform = `translateZ(${halfT}px)`;
+      faceTails.style.transform = `rotateY(180deg) translateZ(${halfT}px)`;
+
+      // Clear old side wall
+      coin.querySelectorAll('.edge-seg').forEach(n => n.remove());
+
+      // Build side wall (cylinder)
+      const circumference = 2 * Math.PI * radius;
+      const segW = (circumference / EDGE_SEGMENTS) + 0.6; // overlap to avoid gaps
+      const segH = COIN_THICKNESS;
+
+      for(let i=0;i<EDGE_SEGMENTS;i++){
+        const seg = document.createElement('div');
+        seg.className = 'edge-seg';
+        seg.style.width = `${segW}px`;
+        seg.style.height = `${segH}px`;
+        seg.style.marginLeft = `${-segW/2}px`;
+        seg.style.marginTop = `${-segH/2}px`;
+
+        // Align segments around the Z-axis (coin face is XY plane)
+        // rotateZ to position on circle, translateY to push out, rotateX(90) to stand up as wall
+        seg.style.transform = `rotateZ(${angle}deg) translateY(-${radius}px) rotateX(90deg)`;
+
+        // facet shading
+        const shade = 92 + Math.round(12 * Math.sin((i/EDGE_SEGMENTS) * Math.PI * 2));
+        seg.style.filter = `brightness(${shade}%)`;
+
+        coin.appendChild(seg);
+      }
+    }
+
+    /* =========================
+       Game
+    ========================== */
+    function resetGame(){
+      state.maxFlips = clampInt(roundCountEl.value, 1, 99);
+      roundCountEl.value = state.maxFlips;
+
+      state.flips = 0;
+      state.headsScore = 0;
+      state.tailsScore = 0;
+
+      state.rotX = REST_TILT_X;
+      state.rotY = REST_TILT_Y;
+
+      coin.classList.add('is-initial');
+      coin.style.transform = `rotateX(${state.rotX}deg) rotateY(${state.rotY}deg)`;
+
+      resultEl.textContent = "Sẵn sàng.";
+      hintEl.textContent = "Nhấn Tung xu để bắt đầu.";
+      setSummary("");
+
+      updateNamesUI();
+      updateCountersUI();
+      setBusy(false);
+    }
+
+    function finishIfDone(){
+      if(state.flips < state.maxFlips) return;
+
+      const hName = getName(headsNameEl, "Người 1");
+      const tName = getName(tailsNameEl, "Người 2");
+
+      if(state.headsScore === state.tailsScore){
+        setSummary(`Hòa nhau! (${state.headsScore}-${state.tailsScore})`);
+      } else if(state.headsScore > state.tailsScore){
+        setSummary(`${hName} thắng chung cuộc! (${state.headsScore}-${state.tailsScore})`);
+      } else {
+        setSummary(`${tName} thắng chung cuộc! (${state.tailsScore}-${state.headsScore})`);
+      }
+
+      setBusy(false);
+      flipBtn.disabled = true;
+    }
+
+    function flipOnce(){
+      if(state.busy) return;
+      if(state.flips >= state.maxFlips) return;
+
+      setBusy(true);
+
+      // IMPORTANT: remove initial overlay "?"
+      coin.classList.remove('is-initial');
+
+      resultEl.textContent = "Đang tung...";
+      hintEl.textContent = "Hồi hộp quá...";
+      setSummary("");
+
+      const isHeads = cryptoBool();            // true=heads, false=tails
+      const targetFaceY = isHeads ? 0 : 180;   // which cap faces camera
+      const spins = cryptoInt(5, 8);
+
+      // Keep tilt so side wall is always visible
+      state.rotX = REST_TILT_X + 360 * spins;
+
+      // Add spins then lock Y to desired face with REST offset
+      state.rotY += 360 * spins;
+      const wantY = REST_TILT_Y + targetFaceY;
+
+      const modY = normMod360(state.rotY);
+      const wantMod = normMod360(wantY);
+
+      let adjust = wantMod - modY;
+      if(adjust < 0) adjust += 360;
+      state.rotY += adjust;
+
+      coin.style.transform = `rotateX(${state.rotX}deg) rotateY(${state.rotY}deg)`;
+
+      state.flips += 1;
+      updateCountersUI();
+
+      setTimeout(() => {
+        const hName = getName(headsNameEl, "Người 1");
+        const tName = getName(tailsNameEl, "Người 2");
+
+        if(isHeads) state.headsScore += 1;
+        else state.tailsScore += 1;
+
+        updateCountersUI();
+
+        const face = isHeads ? "NGỬA" : "ÚP";
+        const winner = isHeads ? hName : tName;
+
+        resultEl.textContent = `Kết quả: ${face} — ${winner}`;
+        hintEl.textContent = state.flips >= state.maxFlips ? "Kết thúc lượt chơi." : "Tiếp tục nào, bạn sợ à ?";
+
+        if(state.flips >= state.maxFlips){
+          finishIfDone();
+        } else {
+          setBusy(false);
+        }
+      }, FLIP_DURATION_MS);
+    }
+
+    /* =========================
+       Events
+    ========================== */
+    flipBtn.addEventListener('click', flipOnce);
+    resetBtn.addEventListener('click', resetGame);
+    roundCountEl.addEventListener('change', resetGame);
+    headsNameEl.addEventListener('input', updateNamesUI);
+    tailsNameEl.addEventListener('input', updateNamesUI);
+
+    /* =========================
+       Init
+    ========================== */
+    buildCoin3D();
+    resetGame();
+  </script>
+</body>
+</html>
